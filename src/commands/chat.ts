@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import type { AgentEventPayload, EventFrame } from "../protocol.js";
+import { stripControl } from "../openclaw-schema.js";
 
 /**
  * The fixed sessionKey for all ocdiag ↔ agent communication.
@@ -101,13 +102,14 @@ export async function sendToAgent(
       if (payload.stream === "assistant") {
         const delta = payload.data?.delta ?? payload.data?.text ?? "";
         if (typeof delta === "string" && delta) {
+          const safe = stripControl(delta); // 不可信智能体输出：剥终端转义序列，防注入
           spinner.stop();
           if (!started) {
             process.stdout.write(chalk.green("agent> "));
             started = true;
           }
-          process.stdout.write(delta);
-          fullText += delta;
+          process.stdout.write(safe);
+          fullText += safe;
         }
       }
 
@@ -121,7 +123,7 @@ export async function sendToAgent(
 
       if (payload.stream === "error") {
         const msg = payload.data?.message ?? payload.data?.error ?? "Agent error";
-        fail(new Error(String(msg)));
+        fail(new Error(stripControl(String(msg))));
       }
     };
 

@@ -1,7 +1,8 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import { sendToAgent } from "./chat.js";
-import { canonicalConfig, sanitizeConfigForOutput } from "./config.js";
+import { sanitizeConfigForOutput } from "../redact.js";
+import { canonicalConfig, viewHealth, viewChannels } from "../openclaw-schema.js";
 
 export type DiagnosticFinding = {
   severity: "error" | "warn" | "info";
@@ -185,9 +186,9 @@ export function analyzeConfig(config: Record<string, unknown>, findings: Diagnos
 }
 
 export function analyzeHealth(health: Record<string, unknown>, findings: DiagnosticFinding[]) {
-  // The gateway answers the RPC even when unhealthy, so a successful call is NOT
-  // enough — read health.ok (matching status.ts's `h.ok === true`).
-  if (health.ok === true) {
+  // 经防腐层归一后再判断；规则本身不变：healthy 才 info，否则一律 error。
+  // (网关即便不健康也会应答 RPC，所以「调用成功」不等于健康，必须看 health.ok。)
+  if (viewHealth(health).healthy) {
     findings.push({ severity: "info", area: "health", message: "Gateway healthy" });
   } else {
     findings.push({
@@ -199,29 +200,21 @@ export function analyzeHealth(health: Record<string, unknown>, findings: Diagnos
 }
 
 export function analyzeChannels(channels: Record<string, unknown>, findings: DiagnosticFinding[]) {
-  // channels.status shape (see status.ts): per-channel meta in `channels`,
-  // per-channel account arrays in `channelAccounts`, display order in `channelOrder`.
-  const meta = (channels.channels ?? {}) as Record<string, any>;
-  const accountsByChannel = (channels.channelAccounts ?? {}) as Record<string, any>;
-  const order: string[] = Array.isArray(channels.channelOrder)
-    ? (channels.channelOrder as string[])
-    : Object.keys(meta);
-
-  for (const name of order) {
-    const cm = (meta[name] ?? {}) as Record<string, any>;
-    if (cm.running === false) {
-      findings.push({ severity: "warn", area: "channels", message: `Channel "${name}" is not running` });
+  // 字段拆解全部交给防腐层，这里只跑判断规则（与原实现逐条等价）。
+  for (const ch of viewChannels(channels)) {
+    // 仅当显式声明未运行 (running === false) 才告警；缺失不触发。
+    if (ch.running === false) {
+      findings.push({ severity: "warn", area: "channels", message: `Channel "${ch.name}" is not running` });
     }
 
-    const accounts: any[] = Array.isArray(accountsByChannel[name]) ? accountsByChannel[name] : [];
-    for (const acc of accounts) {
+    for (const acc of ch.accounts) {
       // A deliberately disabled account being disconnected is not a fault.
-      if (acc?.connected !== true && acc?.enabled !== false) {
-        const reason = acc?.lastError ? `: ${acc.lastError}` : "";
+      if (!acc.connected && acc.enabled !== false) {
+        const reason = acc.lastError ? `: ${acc.lastError}` : "";
         findings.push({
           severity: "error",
           area: "channels",
-          message: `Channel "${name}" account "${acc?.accountId ?? "?"}" is not connected${reason}`,
+          message: `Channel "${ch.name}" account "${acc.accountId}" is not connected${reason}`,
         });
       }
     }

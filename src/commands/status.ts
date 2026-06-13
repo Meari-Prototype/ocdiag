@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import type { HelloOk } from "../protocol.js";
+import { viewServer, viewHealth, viewChannels, viewAgents } from "../openclaw-schema.js";
 
 export type StatusOptions = { json?: boolean; verbose?: boolean };
 
@@ -69,27 +70,21 @@ function rawSection(title: string, value: unknown) {
   console.log();
 }
 
-function arrLen(x: unknown): number {
-  return Array.isArray(x) ? x.length : 0;
-}
-
 function printGateway(info: HelloOk | null, health: Fetched) {
-  const h = (health.ok ? health.value : null) as Record<string, any> | null;
-  const version = info?.server?.version ?? h?.runtimeVersion ?? "unknown";
+  const server = viewServer(info);
+  const hv = health.ok ? viewHealth(health.value) : null;
+  const version = server.version ?? hv?.runtimeVersion ?? "unknown";
   const meta = info
-    ? chalk.dim(
-        `protocol ${info.protocol} · ${info.features.methods.length} methods · ${info.features.events.length} events`,
-      )
+    ? chalk.dim(`protocol ${server.protocol ?? "?"} · ${server.methodCount} methods · ${server.eventCount} events`)
     : "";
   console.log(`${chalk.green("●")} ${chalk.bold("Gateway")} ${version}   ${meta}`);
 
-  if (h) {
-    const ok = h.ok === true;
-    const dur = typeof h.durationMs === "number" ? ` (${(h.durationMs / 1000).toFixed(1)}s)` : "";
-    const plugins = h.plugins
-      ? chalk.dim(`   plugins: ${arrLen(h.plugins.loaded)} loaded, ${arrLen(h.plugins.errors)} errors`)
+  if (hv) {
+    const dur = hv.durationMs !== undefined ? ` (${(hv.durationMs / 1000).toFixed(1)}s)` : "";
+    const plugins = hv.plugins
+      ? chalk.dim(`   plugins: ${hv.plugins.loaded} loaded, ${hv.plugins.errors} errors`)
       : "";
-    console.log(`  health: ${ok ? chalk.green("ok") : chalk.red("not ok")}${dur}${plugins}`);
+    console.log(`  health: ${hv.healthy ? chalk.green("ok") : chalk.red("not ok")}${dur}${plugins}`);
   } else {
     console.log(`  health: ${chalk.red("unavailable")} ${chalk.dim(health.ok ? "" : `(${health.error})`)}`);
   }
@@ -102,35 +97,27 @@ function printChannels(channels: Fetched, health: Fetched) {
     console.log(chalk.yellow(`  unavailable (${channels.error})`));
     return;
   }
-  const ch = channels.value as Record<string, any>;
-  const meta = ch?.channels ?? {};
-  const accountsByChannel = ch?.channelAccounts ?? {};
-  const order: string[] = Array.isArray(ch?.channelOrder) ? ch.channelOrder : Object.keys(meta);
-  if (order.length === 0) {
+  const views = viewChannels(channels.value, health.ok ? health.value : undefined);
+  if (views.length === 0) {
     console.log(chalk.dim("  (none configured)"));
     return;
   }
-  const h = (health.ok ? health.value : null) as Record<string, any> | null;
 
-  for (const name of order) {
-    const cm = (meta[name] ?? {}) as Record<string, any>;
-    const running = cm.running === true;
-    const mode = cm.mode ? chalk.dim(` · ${cm.mode}`) : "";
+  for (const ch of views) {
+    const running = ch.running === true;
+    const mode = ch.mode ? chalk.dim(` · ${ch.mode}`) : "";
     const dot = running ? chalk.green("●") : chalk.dim("○");
-    console.log(`  ${dot} ${name}   ${running ? chalk.green("running") : chalk.dim("stopped")}${mode}`);
+    console.log(`  ${dot} ${ch.name}   ${running ? chalk.green("running") : chalk.dim("stopped")}${mode}`);
 
-    const accounts: any[] = Array.isArray(accountsByChannel[name]) ? accountsByChannel[name] : [];
-    for (const acc of accounts) {
-      const connected = acc?.connected === true;
-      const icon = connected ? chalk.green("✔") : chalk.red("✘");
-      const username = h?.channels?.[name]?.accounts?.[acc?.accountId]?.probe?.bot?.username;
-      const handle = username ? chalk.cyan(`@${username}`) : "";
-      const state = connected
+    for (const acc of ch.accounts) {
+      const icon = acc.connected ? chalk.green("✔") : chalk.red("✘");
+      const handle = acc.username ? chalk.cyan(`@${acc.username}`) : "";
+      const state = acc.connected
         ? "connected"
-        : acc?.lastError
-          ? chalk.red(String(acc.lastError))
+        : acc.lastError
+          ? chalk.red(acc.lastError)
           : chalk.dim("disconnected");
-      const id = String(acc?.accountId ?? "?").padEnd(10);
+      const id = acc.accountId.padEnd(10);
       console.log(`      ${icon} ${id} ${handle}${handle ? "  " : ""}${state}`);
     }
   }
@@ -138,22 +125,17 @@ function printChannels(channels: Fetched, health: Fetched) {
 
 function printAgents(health: Fetched) {
   if (!health.ok) return;
-  const h = health.value as Record<string, any>;
-  const agents = h?.agents;
-  if (!Array.isArray(agents) || agents.length === 0) return;
+  const { defaultAgentId, agents } = viewAgents(health.value);
+  if (agents.length === 0) return;
 
   console.log();
-  const def = h?.defaultAgentId;
-  console.log(chalk.bold("Agents") + (def ? chalk.dim(`  (default: ${def})`) : ""));
+  console.log(chalk.bold("Agents") + (defaultAgentId ? chalk.dim(`  (default: ${defaultAgentId})`) : ""));
   for (const a of agents) {
-    const isDefault = a?.isDefault === true || a?.agentId === def;
-    const dot = isDefault ? chalk.green("●") : chalk.dim("○");
-    const hb = a?.heartbeat?.enabled ? chalk.green("on") : chalk.dim("off");
-    const count = a?.sessions?.count ?? 0;
-    const age = a?.sessions?.recent?.[0]?.age;
-    const seen = typeof age === "number" ? chalk.dim(` · last active ${relTime(age)}`) : "";
-    const id = String(a?.agentId ?? "?").padEnd(12);
-    console.log(`  ${dot} ${id} heartbeat: ${hb}   ${count} session${count === 1 ? "" : "s"}${seen}`);
+    const dot = a.isDefault ? chalk.green("●") : chalk.dim("○");
+    const hb = a.heartbeatEnabled ? chalk.green("on") : chalk.dim("off");
+    const seen = a.lastActiveAge !== undefined ? chalk.dim(` · last active ${relTime(a.lastActiveAge)}`) : "";
+    const id = a.agentId.padEnd(12);
+    console.log(`  ${dot} ${id} heartbeat: ${hb}   ${a.sessionCount} session${a.sessionCount === 1 ? "" : "s"}${seen}`);
   }
 }
 
