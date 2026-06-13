@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import type { HelloOk } from "../protocol.js";
-import { viewServer, viewHealth, viewChannels, viewAgents } from "../openclaw-schema.js";
+import { viewServer, viewHealth, viewChannels, viewAgents, stripControl } from "../openclaw-schema.js";
 import { sanitizeConfigForOutput } from "../redact.js";
 
 export type StatusOptions = { json?: boolean; verbose?: boolean };
@@ -27,27 +27,24 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
   const channels = await fetch(client, "channels.status");
 
   if (opts.json) {
-    // raw payload 直出前过脱敏：这些 RPC 当前不含凭据，但万一某层带了 token/key 不能裸出。
-    console.log(
-      JSON.stringify(
-        {
-          server: info
-            ? {
-                version: info.server.version,
-                connId: info.server.connId,
-                protocol: info.protocol,
-                methods: info.features.methods.length,
-                events: info.features.events.length,
-              }
-            : null,
-          health: sanitizeConfigForOutput(unwrap(health)),
-          status: sanitizeConfigForOutput(unwrap(status)),
-          channels: sanitizeConfigForOutput(unwrap(channels)),
-        },
-        null,
-        2,
-      ),
-    );
+    // raw payload 直出前：先脱敏（凭据不裸出），再 stripControl 整段 JSON 文本。
+    // JSON.stringify 已把 C0(含 ESC) 转义成 \uXXXX，stripControl 补掉它放过的
+    // DEL(0x7f)/C1(0x80-9f)——其中 0x9b/0x9d 是 8-bit CSI/OSC 引导符。
+    const payload = {
+      server: info
+        ? {
+            version: info.server.version,
+            connId: info.server.connId,
+            protocol: info.protocol,
+            methods: info.features.methods.length,
+            events: info.features.events.length,
+          }
+        : null,
+      health: sanitizeConfigForOutput(unwrap(health)),
+      status: sanitizeConfigForOutput(unwrap(status)),
+      channels: sanitizeConfigForOutput(unwrap(channels)),
+    };
+    console.log(stripControl(JSON.stringify(payload, null, 2)));
     return;
   }
 
@@ -67,8 +64,8 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
 
 function rawSection(title: string, value: unknown) {
   console.log(chalk.bold(title));
-  // JSON.stringify formats arrays/nesting correctly (unlike the old per-line printer).
-  console.log(JSON.stringify(value, null, 2));
+  // JSON.stringify 已转义 C0(含 ESC)；stripControl 再补掉它放过的 DEL/C1 控制字节。
+  console.log(stripControl(JSON.stringify(value, null, 2)));
   console.log();
 }
 
