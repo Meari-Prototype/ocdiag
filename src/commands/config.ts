@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import { sanitizeConfigForOutput } from "../redact.js";
-import { canonicalConfig, getConfigDottedPath, availableTopKeys, viewConfigMeta } from "../openclaw-schema.js";
+import { canonicalConfig, getConfigDottedPath, availableTopKeys, viewConfigMeta, stripControl } from "../openclaw-schema.js";
 
 // 原始字段提取 / 层级选择已迁入防腐层 (openclaw-schema)。此处只负责命令编排与输出格式化。
 // 重新导出以保持既有 importer（diagnose、tests）的引用路径不变。
@@ -70,5 +70,6 @@ function formatConfigMeta(payload: unknown): string {
 
 function formatJsonValue(value: unknown): string {
   const formatted = JSON.stringify(value, null, 2);
-  return formatted === undefined ? "undefined" : formatted;
+  // 与 status 两条 raw 路径对齐：JSON 已转义 C0(含 ESC)，stripControl 补掉它放过的 DEL/C1。
+  return formatted === undefined ? "undefined" : stripControl(formatted);
 }

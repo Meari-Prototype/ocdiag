@@ -187,3 +187,27 @@ describe("config layer ordering (Bug 4: whole-config and single-key must agree)"
     assert.equal(getConfigDottedPath(payload, "gateway.mode"), "from-parsed");
   });
 });
+
+describe("configGetCommand raw output (control-byte defense)", () => {
+  it("strips DEL/C1 bytes from JSON output, aligning with status", async () => {
+    // C1 CSI(0x9b) + DEL(0x7f) hidden in a non-secret config value.
+    const client = {
+      request: async () => ({ parsed: { note: "boom\x9b2K\x7fEND" } }),
+    } as unknown as GatewayClient;
+
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (v?: unknown) => {
+      logs.push(String(v));
+    };
+    try {
+      await configGetCommand(client, undefined, { json: true });
+    } finally {
+      console.log = orig;
+    }
+    const out = logs.join("\n");
+    assert.match(out, /boom/);
+    assert.match(out, /END/);
+    assert.doesNotMatch(out, /[\x7f-\x9f]/);
+  });
+});
