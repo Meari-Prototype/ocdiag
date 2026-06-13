@@ -1,0 +1,113 @@
+[中文](README.md) | **English**
+
+# ocdiag
+
+A read-only diagnostics CLI for the OpenClaw gateway.
+Check gateway health, inspect (redacted) configuration, run local diagnostics,
+and chat with the gateway's agents — all over the gateway's WebSocket protocol.
+
+`ocdiag` **never writes** gateway configuration. It only calls read-only methods
+(`health`, `status`, `config.get`, `channels.status`, …) and talks to agents
+through a dedicated diagnostic session.
+
+## Features
+
+- **`status`** — gateway version, health, overall status, and per-channel connectivity.
+- **`config`** — read the gateway configuration (secrets redacted), optionally a single dotted key.
+- **`diagnose`** — collect health/config/channel state, flag issues locally, then ask the agent for advice.
+- **`chat`** — one-shot or interactive REPL chat with an agent, with streamed responses.
+
+## Requirements
+
+- Node.js >= 22
+- A running OpenClaw gateway reachable over WebSocket
+- An OpenClaw device identity on this machine (created by `openclaw` itself —
+  `ocdiag` never creates or modifies one)
+
+## Install
+
+```bash
+git clone https://github.com/meari-v2.0/ocdiag.git
+cd ocdiag
+npm install
+npm run build
+npm link        # optional: exposes the `ocdiag` command globally
+```
+
+Or run straight from source without building:
+
+```bash
+npm run dev -- status
+```
+
+## Configuration
+
+By default `ocdiag` connects to `ws://127.0.0.1:18789`. Override via environment
+variables or flags:
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `OPENCLAW_GATEWAY_HOST` | `127.0.0.1` | Gateway host |
+| `OPENCLAW_GATEWAY_PORT` | `18789` | Gateway port |
+| `OPENCLAW_GATEWAY_TOKEN` | — | Shared gateway token (only if the gateway uses token auth) |
+| `OCDIAG_DEBUG` | — | Set to `1` to print raw protocol frames to stderr |
+
+Global flags (override env vars):
+
+```
+--url <url>      Gateway WebSocket URL
+--token <token>  Gateway auth token
+```
+
+If the gateway uses token auth, the token is also read from
+`~/.openclaw/openclaw.json` (`gateway.auth.token`) when not provided.
+
+## Usage
+
+```bash
+ocdiag status                    # health + status + channels
+ocdiag config                    # full config, secrets redacted
+ocdiag config gateway.auth       # a single dotted key
+ocdiag diagnose                  # collect diagnostics + ask the agent
+ocdiag chat "is the telegram channel up?"   # one-shot
+ocdiag chat                      # interactive REPL (/quit to exit)
+```
+
+## Authentication
+
+When connecting from outside the gateway host (e.g. a host machine to a gateway
+running in Docker), the connection is **not** treated as local, so device
+identity authentication is required. `ocdiag` reads the existing identity and
+pairing data created by OpenClaw — it never generates new credentials.
+
+Files read (read-only):
+
+| File | Used for |
+|---|---|
+| `~/.openclaw/identity/device.json` | Ed25519 device key pair |
+| `~/.openclaw/identity/device-auth.json` | device token issued during pairing |
+| `~/.openclaw/devices/paired.json` | paired platform metadata |
+| `~/.openclaw/openclaw.json` | optional gateway token |
+
+## Privacy & security
+
+- The Ed25519 **private key is used only to sign the handshake challenge
+  locally**. The signature — never the private key — is sent to the gateway.
+- `ocdiag` is **read-only** toward gateway config; it issues no write methods.
+- `config` and `diagnose` redact secret-looking keys (tokens, passwords, API
+  keys, …) before printing.
+- ⚠️ `diagnose` sends a **redacted** copy of your config to the gateway agent for
+  advice. If that agent is backed by a remote LLM, redacted config text leaves
+  your machine. Run `diagnose` only when you're comfortable with that.
+
+## Development
+
+```bash
+npm run dev -- <command>   # run from source via tsx
+npm test                   # run unit tests
+npm run build              # compile to dist/
+```
+
+## License
+
+[MIT](LICENSE) © meari-v2.0

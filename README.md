@@ -1,111 +1,99 @@
+**中文** | [English](README.en.md)
+
 # ocdiag
 
-A read-only diagnostics CLI for the [OpenClaw](https://github.com/) gateway.
-Check gateway health, inspect (redacted) configuration, run local diagnostics,
-and chat with the gateway's agents — all over the gateway's WebSocket protocol.
+OpenClaw 网关的只读诊断 CLI。通过网关的 WebSocket 协议检查网关健康状况、查看（脱敏后的）配置、运行本地诊断，并与网关里的智能体对话。
 
-`ocdiag` **never writes** gateway configuration. It only calls read-only methods
-(`health`, `status`, `config.get`, `channels.status`, …) and talks to agents
-through a dedicated diagnostic session.
+`ocdiag` **从不写入**网关配置。它只调用只读方法（`health`、`status`、`config.get`、`channels.status` 等），并通过一个专用的诊断会话与智能体通信。
 
-## Features
+## 功能
 
-- **`status`** — gateway version, health, overall status, and per-channel connectivity.
-- **`config`** — read the gateway configuration (secrets redacted), optionally a single dotted key.
-- **`diagnose`** — collect health/config/channel state, flag issues locally, then ask the agent for advice.
-- **`chat`** — one-shot or interactive REPL chat with an agent, with streamed responses.
+- **`status`** — 网关版本、健康状况、整体状态，以及各通道连通性。
+- **`config`** — 读取网关配置（密钥已脱敏），可选只读取某个点分路径的键。
+- **`diagnose`** — 收集健康 / 配置 / 通道状态，先在本地标记问题，再请智能体给出建议。
+- **`chat`** — 与智能体单次或交互式（REPL）对话，流式输出回复。
 
-## Requirements
+## 环境要求
 
 - Node.js >= 22
-- A running OpenClaw gateway reachable over WebSocket
-- An OpenClaw device identity on this machine (created by `openclaw` itself —
-  `ocdiag` never creates or modifies one)
+- 一个可通过 WebSocket 访问的 OpenClaw 网关
+- 本机已有 OpenClaw 设备身份（由 `openclaw` 自己创建 —— `ocdiag` 绝不创建或修改它）
 
-## Install
+## 安装
 
 ```bash
 git clone https://github.com/meari-v2.0/ocdiag.git
 cd ocdiag
 npm install
 npm run build
-npm link        # optional: exposes the `ocdiag` command globally
+npm link        # 可选：把 `ocdiag` 命令暴露到全局
 ```
 
-Or run straight from source without building:
+或者不构建，直接从源码运行：
 
 ```bash
 npm run dev -- status
 ```
 
-## Configuration
+## 配置
 
-By default `ocdiag` connects to `ws://127.0.0.1:18789`. Override via environment
-variables or flags:
+`ocdiag` 默认连接 `ws://127.0.0.1:18789`。可通过环境变量或命令行参数覆盖：
 
-| Env var | Default | Meaning |
+| 环境变量 | 默认值 | 含义 |
 |---|---|---|
-| `OPENCLAW_GATEWAY_HOST` | `127.0.0.1` | Gateway host |
-| `OPENCLAW_GATEWAY_PORT` | `18789` | Gateway port |
-| `OPENCLAW_GATEWAY_TOKEN` | — | Shared gateway token (only if the gateway uses token auth) |
-| `OCDIAG_DEBUG` | — | Set to `1` to print raw protocol frames to stderr |
+| `OPENCLAW_GATEWAY_HOST` | `127.0.0.1` | 网关主机 |
+| `OPENCLAW_GATEWAY_PORT` | `18789` | 网关端口 |
+| `OPENCLAW_GATEWAY_TOKEN` | — | 网关共享 token（仅当网关启用 token 认证时需要） |
+| `OCDIAG_DEBUG` | — | 设为 `1` 时把原始协议帧打印到 stderr |
 
-Global flags (override env vars):
+全局参数（优先级高于环境变量）：
 
 ```
---url <url>      Gateway WebSocket URL
---token <token>  Gateway auth token
+--url <url>      网关 WebSocket 地址
+--token <token>  网关认证 token
 ```
 
-If the gateway uses token auth, the token is also read from
-`~/.openclaw/openclaw.json` (`gateway.auth.token`) when not provided.
+当未显式提供 token 时，若网关使用 token 认证，token 也会从 `~/.openclaw/openclaw.json`（`gateway.auth.token`）读取。
 
-## Usage
+## 使用
 
 ```bash
-ocdiag status                    # health + status + channels
-ocdiag config                    # full config, secrets redacted
-ocdiag config gateway.auth       # a single dotted key
-ocdiag diagnose                  # collect diagnostics + ask the agent
-ocdiag chat "is the telegram channel up?"   # one-shot
-ocdiag chat                      # interactive REPL (/quit to exit)
+ocdiag status                       # 健康 + 状态 + 通道
+ocdiag config                       # 完整配置，密钥脱敏
+ocdiag config gateway.auth          # 单个点分路径键
+ocdiag diagnose                     # 收集诊断 + 询问智能体
+ocdiag chat "telegram 通道还正常吗？"   # 单次
+ocdiag chat                         # 交互式 REPL（/quit 退出）
 ```
 
-## Authentication
+## 认证
 
-When connecting from outside the gateway host (e.g. a host machine to a gateway
-running in Docker), the connection is **not** treated as local, so device
-identity authentication is required. `ocdiag` reads the existing identity and
-pairing data created by OpenClaw — it never generates new credentials.
+当从网关宿主机之外连接时（例如宿主机连 Docker 里的网关），连接**不会**被视为本地连接，因此需要设备身份认证。`ocdiag` 读取 OpenClaw 已创建的身份与配对数据 —— 绝不生成新凭据。
 
-Files read (read-only):
+读取的文件（只读）：
 
-| File | Used for |
+| 文件 | 用途 |
 |---|---|
-| `~/.openclaw/identity/device.json` | Ed25519 device key pair |
-| `~/.openclaw/identity/device-auth.json` | device token issued during pairing |
-| `~/.openclaw/devices/paired.json` | paired platform metadata |
-| `~/.openclaw/openclaw.json` | optional gateway token |
+| `~/.openclaw/identity/device.json` | Ed25519 设备密钥对 |
+| `~/.openclaw/identity/device-auth.json` | 配对时颁发的设备 token |
+| `~/.openclaw/devices/paired.json` | 配对的平台元数据 |
+| `~/.openclaw/openclaw.json` | 可选的网关 token |
 
-## Privacy & security
+## 隐私与安全
 
-- The Ed25519 **private key is used only to sign the handshake challenge
-  locally**. The signature — never the private key — is sent to the gateway.
-- `ocdiag` is **read-only** toward gateway config; it issues no write methods.
-- `config` and `diagnose` redact secret-looking keys (tokens, passwords, API
-  keys, …) before printing.
-- ⚠️ `diagnose` sends a **redacted** copy of your config to the gateway agent for
-  advice. If that agent is backed by a remote LLM, redacted config text leaves
-  your machine. Run `diagnose` only when you're comfortable with that.
+- Ed25519 **私钥仅用于在本地对握手挑战（challenge）签名**。发给网关的是签名结果 —— 私钥本身绝不外传。
+- `ocdiag` 对网关配置是**只读**的，不发出任何写操作方法。
+- `config` 和 `diagnose` 在打印前会对疑似密钥的键（token、password、API key 等）做脱敏。
+- ⚠️ `diagnose` 会把**脱敏后**的配置副本发给网关智能体以获取建议。如果该智能体由远程 LLM 驱动，脱敏后的配置文本会离开你的机器。请在你能接受这一点时再运行 `diagnose`。
 
-## Development
+## 开发
 
 ```bash
-npm run dev -- <command>   # run from source via tsx
-npm test                   # run unit tests
-npm run build              # compile to dist/
+npm run dev -- <command>   # 通过 tsx 从源码运行
+npm test                   # 跑单元测试
+npm run build              # 编译到 dist/
 ```
 
-## License
+## 许可证
 
 [MIT](LICENSE) © meari-v2.0
