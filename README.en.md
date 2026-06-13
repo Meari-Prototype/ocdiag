@@ -2,6 +2,8 @@
 
 # ocdiag
 
+*ocdiag — OpenClaw diagnostics*
+
 A read-only diagnostics CLI for the OpenClaw gateway.
 Check gateway health, inspect (redacted) configuration, run local diagnostics,
 and chat with the gateway's agents — all over the gateway's WebSocket protocol.

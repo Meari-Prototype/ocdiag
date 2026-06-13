@@ -2,6 +2,8 @@
 
 # ocdiag
 
+*ocdiag — OpenClaw diagnostics · OpenClaw 诊断（工具）*
+
 OpenClaw 网关的只读诊断 CLI。通过网关的 WebSocket 协议检查网关健康状况、查看（脱敏后的）配置、运行本地诊断，并与网关里的智能体对话。
 
 `ocdiag` **从不写入**网关配置。它只调用只读方法（`health`、`status`、`config.get`、`channels.status` 等），并通过一个专用的诊断会话与智能体通信。
