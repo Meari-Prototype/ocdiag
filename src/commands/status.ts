@@ -2,6 +2,7 @@ import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import type { HelloOk } from "../protocol.js";
 import { viewServer, viewHealth, viewChannels, viewAgents } from "../openclaw-schema.js";
+import { sanitizeConfigForOutput } from "../redact.js";
 
 export type StatusOptions = { json?: boolean; verbose?: boolean };
 
@@ -26,6 +27,7 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
   const channels = await fetch(client, "channels.status");
 
   if (opts.json) {
+    // raw payload 直出前过脱敏：这些 RPC 当前不含凭据，但万一某层带了 token/key 不能裸出。
     console.log(
       JSON.stringify(
         {
@@ -38,9 +40,9 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
                 events: info.features.events.length,
               }
             : null,
-          health: unwrap(health),
-          status: unwrap(status),
-          channels: unwrap(channels),
+          health: sanitizeConfigForOutput(unwrap(health)),
+          status: sanitizeConfigForOutput(unwrap(status)),
+          channels: sanitizeConfigForOutput(unwrap(channels)),
         },
         null,
         2,
@@ -51,9 +53,9 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
 
   if (opts.verbose) {
     rawSection("Server", info);
-    rawSection("Health", unwrap(health));
-    rawSection("Status", unwrap(status));
-    rawSection("Channels", unwrap(channels));
+    rawSection("Health", sanitizeConfigForOutput(unwrap(health)));
+    rawSection("Status", sanitizeConfigForOutput(unwrap(status)));
+    rawSection("Channels", sanitizeConfigForOutput(unwrap(channels)));
     return;
   }
 

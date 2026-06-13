@@ -110,6 +110,9 @@ program
       } else {
         await chatRepl(client);
       }
+    } catch (err) {
+      console.error(chalk.red(`Error: ${err instanceof Error ? err.message : err}`));
+      process.exitCode = 1;
     } finally {
       client.close();
     }

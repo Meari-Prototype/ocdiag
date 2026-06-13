@@ -4,6 +4,7 @@ import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import type { AgentEventPayload, EventFrame } from "../protocol.js";
 import { stripControl } from "../openclaw-schema.js";
+import { sanitizeConfigForOutput } from "../redact.js";
 
 /**
  * The fixed sessionKey for all ocdiag ↔ agent communication.
@@ -90,7 +91,8 @@ export async function sendToAgent(
     const debug = process.env.OCDIAG_DEBUG === "1";
 
     const onEvent = (frame: EventFrame) => {
-      if (debug) console.error("[debug] event:", frame.event, JSON.stringify(frame.payload).slice(0, 200));
+      if (debug)
+        console.error("[debug] event:", frame.event, JSON.stringify(sanitizeConfigForOutput(frame.payload)).slice(0, 200));
       if (frame.event !== "agent") return;
       const payload = frame.payload as AgentEventPayload | undefined;
       if (!payload) return;
@@ -116,7 +118,11 @@ export async function sendToAgent(
       if (payload.stream === "lifecycle") {
         const phase = payload.data?.phase;
         const status = payload.data?.status;
-        if (phase === "end" || status === "complete" || status === "error") {
+        if (status === "error") {
+          // lifecycle 报错单独走失败路径，别把半截输出当成功完成（即便没收到独立 error 帧）。
+          const msg = payload.data?.message ?? payload.data?.error ?? "Agent run ended with error";
+          fail(new Error(stripControl(String(msg))));
+        } else if (phase === "end" || status === "complete") {
           finish(fullText);
         }
       }
@@ -143,7 +149,7 @@ export async function sendToAgent(
         extraSystemPrompt: opts?.extraSystemPrompt,
       })
       .then((preliminary) => {
-        if (debug) console.error("[debug] preliminary response:", JSON.stringify(preliminary));
+        if (debug) console.error("[debug] preliminary response:", JSON.stringify(sanitizeConfigForOutput(preliminary)));
         if (preliminary?.runId) {
           serverRunId = preliminary.runId;
         }

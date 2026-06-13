@@ -141,6 +141,38 @@ describe("sanitizeConfigForOutput", () => {
       telegram: { fallbackTokens: ["[REDACTED]"] },
     });
   });
+
+  it("redacts secret-shaped values even under non-secret key names (bare `key`)", () => {
+    const sanitized = sanitizeConfigForOutput({
+      openai: { key: "sk-abcdefghij0123456789ABCDEF" }, // 裸 key，名字不在 isSecretKey
+      gh: { value: "ghp_ABCDEFGHIJ0123456789abcdefghij012345" },
+      tg: { note: "123456789:AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDD" },
+      jwt: { x: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.sig123abc" },
+      pem: { blob: "-----BEGIN PRIVATE KEY-----\nMIIEvg...\n-----END PRIVATE KEY-----" },
+    });
+
+    assert.deepEqual(sanitized, {
+      openai: { key: "[REDACTED]" },
+      gh: { value: "[REDACTED]" },
+      tg: { note: "[REDACTED]" },
+      jwt: { x: "[REDACTED]" },
+      pem: { blob: "[REDACTED]" },
+    });
+  });
+
+  it("does not redact ordinary values, nor token-metadata keys (tokenSource / tokenType)", () => {
+    const input = {
+      baseUrl: "https://api.deepseek.com",
+      version: "2026.4.25",
+      connId: "22970917-41a5-47da-a062-58e9a11bc6c6",
+      mode: "default",
+      note: "this is a short note",
+      count: 8192,
+      tokenSource: "none", // token 元信息，应保留可读
+      tokenType: "bearer",
+    };
+    assert.deepEqual(sanitizeConfigForOutput(input), input);
+  });
 });
 
 describe("config layer ordering (Bug 4: whole-config and single-key must agree)", () => {
