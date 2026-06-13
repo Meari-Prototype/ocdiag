@@ -12,8 +12,8 @@ through a dedicated diagnostic session.
 
 ## Features
 
-- **`status`** — gateway version, health, overall status, and per-channel connectivity.
-- **`config`** — read the gateway configuration (secrets redacted), optionally a single dotted key.
+- **`status`** — concise overview: gateway version/health, per-channel connectivity, and agents (`--verbose` for full raw payloads, `--json` for machine-readable JSON).
+- **`config`** — read the gateway configuration (secrets redacted; one canonical layer by default, `--json` for the full raw payload), optionally a single dotted key.
 - **`diagnose`** — collect health/config/channel state, flag issues locally, then ask the agent for advice.
 - **`chat`** — one-shot or interactive REPL chat with an agent, with streamed responses.
 
@@ -57,6 +57,8 @@ Global flags (override env vars):
 ```
 --url <url>      Gateway WebSocket URL
 --token <token>  Gateway auth token
+--json           Output machine-readable JSON (status / config)
+--verbose        Show full raw payloads (status)
 ```
 
 If the gateway uses token auth, the token is also read from
@@ -65,9 +67,12 @@ If the gateway uses token auth, the token is also read from
 ## Usage
 
 ```bash
-ocdiag status                    # health + status + channels
-ocdiag config                    # full config, secrets redacted
-ocdiag config gateway.auth       # a single dotted key
+ocdiag status                    # concise overview: gateway + channels + agents
+ocdiag status --verbose          # full raw health/status/channels
+ocdiag status --json             # machine-readable JSON
+ocdiag config                    # config (one canonical layer, secrets redacted)
+ocdiag config auth               # a single dotted key
+ocdiag config --json             # full raw config (redacted), for jq
 ocdiag diagnose                  # collect diagnostics + ask the agent
 ocdiag chat "is the telegram channel up?"   # one-shot
 ocdiag chat                      # interactive REPL (/quit to exit)

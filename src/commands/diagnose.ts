@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
 import { sendToAgent } from "./chat.js";
-import { sanitizeConfigForOutput } from "./config.js";
+import { canonicalConfig, sanitizeConfigForOutput } from "./config.js";
 
 type DiagnosticFinding = {
   severity: "error" | "warn" | "info";
@@ -27,10 +27,11 @@ export async function diagnoseCommand(client: GatewayClient) {
     findings.push({ severity: "error", area: "health", message: `Health check failed: ${err}` });
   }
 
-  // 2. Config
+  // 2. Config — config.get returns several near-identical layers; analyze/send just one.
   let config: Record<string, unknown> | null = null;
   try {
-    config = await client.request<Record<string, unknown>>("config.get");
+    const raw = await client.request<unknown>("config.get");
+    config = canonicalConfig(raw).value as Record<string, unknown>;
   } catch (err) {
     findings.push({ severity: "error", area: "config", message: `Cannot read config: ${err}` });
   }
@@ -108,7 +109,6 @@ export async function diagnoseCommand(client: GatewayClient) {
   console.log(chalk.bold("\nAsking agent for diagnosis...\n"));
   const summary = buildDiagnosticSummary(findings, config, channels);
 
-  process.stdout.write(chalk.green("agent> "));
   try {
     await sendToAgent(client, summary, {
       extraSystemPrompt:
@@ -124,43 +124,44 @@ export async function diagnoseCommand(client: GatewayClient) {
 }
 
 function analyzeConfig(config: Record<string, unknown>, findings: DiagnosticFinding[]) {
+  // Gateway server config (gateway.mode / gateway.auth) is optional and absent in
+  // newer schemas — only flag issues when the section is actually present.
   const gateway = config.gateway as Record<string, unknown> | undefined;
-
-  // Check gateway.mode
-  if (!gateway?.mode) {
-    findings.push({
-      severity: "warn",
-      area: "config",
-      message: "gateway.mode is not set — gateway may not start properly",
-    });
-  }
-
-  // Check auth ambiguity
-  const auth = gateway?.auth as Record<string, unknown> | undefined;
-  if (auth) {
-    const hasToken = Boolean(auth.token);
-    const hasPassword = Boolean(auth.password);
-    const hasMode = Boolean(auth.mode);
-    if (hasToken && hasPassword && !hasMode) {
-      findings.push({
-        severity: "error",
-        area: "config",
-        message:
-          "Both gateway token AND password are configured but auth mode is not explicit — ambiguous auth",
-      });
-    }
-    if (!hasToken && !hasPassword && auth.mode !== "none") {
+  if (gateway) {
+    if (!gateway.mode) {
       findings.push({
         severity: "warn",
         area: "config",
-        message: "No gateway auth credentials configured",
+        message: "gateway.mode is not set — gateway may not start properly",
       });
+    }
+
+    const auth = gateway.auth as Record<string, unknown> | undefined;
+    if (auth) {
+      const hasToken = Boolean(auth.token);
+      const hasPassword = Boolean(auth.password);
+      const hasMode = Boolean(auth.mode);
+      if (hasToken && hasPassword && !hasMode) {
+        findings.push({
+          severity: "error",
+          area: "config",
+          message:
+            "Both gateway token AND password are configured but auth mode is not explicit — ambiguous auth",
+        });
+      }
+      if (!hasToken && !hasPassword && auth.mode !== "none") {
+        findings.push({
+          severity: "warn",
+          area: "config",
+          message: "No gateway auth credentials configured",
+        });
+      }
     }
   }
 
-  // Check default agent
+  // Check default agent (only when an agents section exists).
   const agents = config.agents as Record<string, unknown> | undefined;
-  if (!agents?.default && !agents?.defaultId) {
+  if (agents && !agents.default && !agents.defaultId) {
     findings.push({
       severity: "warn",
       area: "config",

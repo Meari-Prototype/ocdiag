@@ -11,6 +11,34 @@ import type { AgentEventPayload, EventFrame } from "../protocol.js";
  */
 const OCDIAG_SESSION_KEY = "gateway:direct";
 
+/** A transient stderr "thinking…" spinner, shown only when stderr is a TTY. */
+function createSpinner() {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let i = 0;
+  let active = false;
+  return {
+    start() {
+      if (!process.stderr.isTTY) return;
+      active = true;
+      timer = setInterval(() => {
+        process.stderr.write(`\r${chalk.dim(`${frames[i++ % frames.length]} thinking…`)}`);
+      }, 80);
+      timer.unref?.();
+    },
+    stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+      if (active) {
+        process.stderr.write("\r\x1b[2K"); // clear the spinner line
+        active = false;
+      }
+    },
+  };
+}
+
 /**
  * Send a single message to the agent, stream the response, then return.
  * Used by both one-shot `chat` and the `diagnose` command.
@@ -22,6 +50,9 @@ const OCDIAG_SESSION_KEY = "gateway:direct";
  *
  * We capture the runId from the preliminary response, then resolve when
  * we see a lifecycle complete/error event or a final response.
+ *
+ * The "agent> " prefix is printed here on the first streamed token (after the
+ * thinking spinner clears), so callers don't print a dangling prefix on failure.
  */
 export async function sendToAgent(
   client: GatewayClient,
@@ -34,11 +65,14 @@ export async function sendToAgent(
 
   return new Promise<string>((resolve, reject) => {
     let finished = false;
+    let started = false; // whether the "agent> " prefix has been printed yet
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const spinner = createSpinner();
 
     const finish = (text: string) => {
       if (finished) return;
       finished = true;
+      spinner.stop();
       if (timer) clearTimeout(timer);
       if (fullText) process.stdout.write("\n");
       resolve(text);
@@ -47,6 +81,7 @@ export async function sendToAgent(
     const fail = (err: Error) => {
       if (finished) return;
       finished = true;
+      spinner.stop();
       if (timer) clearTimeout(timer);
       reject(err);
     };
@@ -66,6 +101,11 @@ export async function sendToAgent(
       if (payload.stream === "assistant") {
         const delta = payload.data?.delta ?? payload.data?.text ?? "";
         if (typeof delta === "string" && delta) {
+          spinner.stop();
+          if (!started) {
+            process.stdout.write(chalk.green("agent> "));
+            started = true;
+          }
           process.stdout.write(delta);
           fullText += delta;
         }
@@ -85,8 +125,10 @@ export async function sendToAgent(
       }
     };
 
-    // Subscribe to events BEFORE sending the request to avoid missing any.
+    // Subscribe to events BEFORE sending the request to avoid missing any,
+    // and start the spinner so the user knows we're waiting on the agent.
     addAgentEventListener(onEvent);
+    spinner.start();
 
     // Send the request. The first res frame is the preliminary "accepted"
     // response containing the server-generated runId.
@@ -100,7 +142,6 @@ export async function sendToAgent(
       })
       .then((preliminary) => {
         if (debug) console.error("[debug] preliminary response:", JSON.stringify(preliminary));
-        // Capture the server's runId for event filtering.
         if (preliminary?.runId) {
           serverRunId = preliminary.runId;
         }
@@ -114,12 +155,21 @@ export async function sendToAgent(
 
     // Safety timeout: 5 minutes. Cleared on finish/fail, and unref'd so it
     // never keeps the process alive on its own (e.g. one-shot `chat` exiting).
-    timer = setTimeout(() => {
-      if (!finished) {
+    timer = setTimeout(
+      () => {
+        if (finished) return;
         finished = true;
-        resolve(fullText || "(timeout — no response within 5 minutes)");
-      }
-    }, 5 * 60 * 1000);
+        spinner.stop();
+        if (started) {
+          // Partial text already streamed — mark it as truncated, not complete.
+          process.stdout.write(chalk.dim("\n[truncated: no completion within 5 minutes]\n"));
+        } else {
+          process.stderr.write(chalk.yellow("(timed out after 5 minutes with no response)\n"));
+        }
+        resolve(fullText);
+      },
+      5 * 60 * 1000,
+    );
     timer.unref?.();
   }).finally(() => {
     removeAgentEventListener();
@@ -166,7 +216,6 @@ export async function chatRepl(client: GatewayClient) {
       break;
     }
 
-    process.stdout.write(chalk.green("agent> "));
     try {
       await sendToAgent(client, trimmed);
     } catch (err) {

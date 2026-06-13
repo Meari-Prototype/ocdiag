@@ -19,7 +19,9 @@ program
   .description("Diagnostics CLI for OpenClaw gateway")
   .version(VERSION)
   .option("--url <url>", "Gateway WebSocket URL", resolveGatewayUrl())
-  .option("--token <token>", "Gateway auth token (or set OPENCLAW_GATEWAY_TOKEN)");
+  .option("--token <token>", "Gateway auth token (or set OPENCLAW_GATEWAY_TOKEN)")
+  .option("--json", "Output machine-readable JSON (status, config)")
+  .option("--verbose", "Show full raw payloads (status)");
 
 /** Create and connect a GatewayClient from global options. */
 async function createClient(opts: { url?: string; token?: string }): Promise<GatewayClient> {
@@ -62,9 +64,10 @@ program
   .command("status")
   .description("Show gateway health, status, and channel connectivity")
   .action(async () => {
-    const client = await createClient(program.opts());
+    const opts = program.opts();
+    const client = await createClient(opts);
     try {
-      await statusCommand(client);
+      await statusCommand(client, { json: opts.json, verbose: opts.verbose });
     } finally {
       client.close();
     }
@@ -74,9 +77,10 @@ program
   .command("config [key]")
   .description("Read gateway configuration (read-only)")
   .action(async (key?: string) => {
-    const client = await createClient(program.opts());
+    const opts = program.opts();
+    const client = await createClient(opts);
     try {
-      await configGetCommand(client, key);
+      await configGetCommand(client, key, { json: opts.json });
     } finally {
       client.close();
     }
@@ -101,7 +105,6 @@ program
     const client = await createClient(program.opts());
     try {
       if (message) {
-        process.stdout.write(chalk.green("agent> "));
         await sendToAgent(client, message);
         console.log();
       } else {

@@ -118,4 +118,27 @@ describe("sanitizeConfigForOutput", () => {
       misc: { timeoutSeconds: 90, mode: "default" },
     });
   });
+
+  it("does not over-redact token-count config (maxTokens / contextTokens / totalTokens)", () => {
+    const sanitized = sanitizeConfigForOutput({
+      models: {
+        providers: {
+          x: { apiKey: "real-key", maxTokens: 200000, maxTokensField: "max_tokens", contextTokens: 1000000 },
+        },
+      },
+      usage: { totalTokens: 4096, inputTokens: 100, outputTokens: 50 },
+      // a real credential whose plural key must still be redacted:
+      telegram: { fallbackTokens: ["bot-token"] },
+    });
+
+    assert.deepEqual(sanitized, {
+      models: {
+        providers: {
+          x: { apiKey: "[REDACTED]", maxTokens: 200000, maxTokensField: "max_tokens", contextTokens: 1000000 },
+        },
+      },
+      usage: { totalTokens: 4096, inputTokens: 100, outputTokens: 50 },
+      telegram: { fallbackTokens: ["[REDACTED]"] },
+    });
+  });
 });
