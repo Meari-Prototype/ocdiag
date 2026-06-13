@@ -27,7 +27,7 @@ through a dedicated diagnostic session.
 ## Install
 
 ```bash
-git clone https://github.com/meari-v2.0/ocdiag.git
+git clone https://github.com/Meari-Prototype/ocdiag.git
 cd ocdiag
 npm install
 npm run build
@@ -121,4 +121,4 @@ npm run build              # compile to dist/
 
 ## License
 
-[MIT](LICENSE) © meari-v2.0
+[MIT](LICENSE) © Meari-Prototype

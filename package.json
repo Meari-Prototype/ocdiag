@@ -9,14 +9,14 @@
     "diagnostics",
     "websocket"
   ],
-  "homepage": "https://github.com/meari-v2.0/ocdiag#readme",
-  "bugs": "https://github.com/meari-v2.0/ocdiag/issues",
+  "homepage": "https://github.com/Meari-Prototype/ocdiag#readme",
+  "bugs": "https://github.com/Meari-Prototype/ocdiag/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/meari-v2.0/ocdiag.git"
+    "url": "git+https://github.com/Meari-Prototype/ocdiag.git"
   },
   "license": "MIT",
-  "author": "meari-v2.0 <meari.agstsscs.v2@gmail.com>",
+  "author": "Meari-Prototype <meari.agstsscs.v2@gmail.com>",
   "type": "module",
   "bin": {
     "ocdiag": "dist/index.js"
