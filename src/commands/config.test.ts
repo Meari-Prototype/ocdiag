@@ -100,4 +100,22 @@ describe("sanitizeConfigForOutput", () => {
     assert.match(output, /\[REDACTED\]/);
     assert.doesNotMatch(output, /gateway-token|gateway-password/);
   });
+
+  it("redacts non-string secrets and additional secret key names", () => {
+    const sanitized = sanitizeConfigForOutput({
+      gateway: { auth: { token: 12345678 } }, // numeric secret must not slip through
+      sentry: { dsn: "https://abc@sentry.io/1" },
+      session: { sessionKey: "sk_live_xyz" },
+      http: { authorization: "Bearer xyz", cookie: "sid=abc" },
+      misc: { timeoutSeconds: 90, mode: "default" }, // non-secret values untouched
+    });
+
+    assert.deepEqual(sanitized, {
+      gateway: { auth: { token: "[REDACTED]" } },
+      sentry: { dsn: "[REDACTED]" },
+      session: { sessionKey: "[REDACTED]" },
+      http: { authorization: "[REDACTED]", cookie: "[REDACTED]" },
+      misc: { timeoutSeconds: 90, mode: "default" },
+    });
+  });
 });

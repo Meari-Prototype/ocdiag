@@ -82,8 +82,9 @@ ocdiag chat                         # 交互式 REPL（/quit 退出）
 ## 隐私与安全
 
 - Ed25519 **私钥仅用于在本地对握手挑战（challenge）签名**。发给网关的是签名结果 —— 私钥本身绝不外传。
-- `ocdiag` 对网关配置是**只读**的，不发出任何写操作方法。
-- `config` 和 `diagnose` 在打印前会对疑似密钥的键（token、password、API key 等）做脱敏。
+- `ocdiag` 对网关**配置**是只读的，不发出任何写操作（如 `config.set`）方法。
+- ℹ️ `chat` 与 `diagnose` 不修改配置，但会在网关侧创建并向专用诊断会话（sessionKey `gateway:direct`）追加消息，并触发一次智能体的 LLM 运行。这是网关侧的状态变更，不影响你的配置或本地身份。
+- `config` 和 `diagnose` 在打印前会按常见密钥名（token、password、API key、authorization、cookie 等）对疑似密钥做**启发式**脱敏；非常规命名或非字符串的键可能漏网，分享前请自行复核。
 - ⚠️ `diagnose` 会把**脱敏后**的配置副本发给网关智能体以获取建议。如果该智能体由远程 LLM 驱动，脱敏后的配置文本会离开你的机器。请在你能接受这一点时再运行 `diagnose`。
 
 ## 开发

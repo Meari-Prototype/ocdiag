@@ -50,8 +50,10 @@ function formatJsonValue(value: unknown): string {
 }
 
 export function sanitizeConfigForOutput(obj: unknown, keyHint?: string): unknown {
-  if (keyHint && isSecretKey(keyHint) && typeof obj === "string") {
-    return obj.length > 0 ? "[REDACTED]" : "";
+  // A secret-named key whose value is a scalar is redacted outright — regardless of
+  // type — so numeric/boolean secrets don't slip through a string-only check.
+  if (keyHint && isSecretKey(keyHint) && isScalar(obj)) {
+    return redactScalar(obj);
   }
 
   if (!obj || typeof obj !== "object") return obj;
@@ -59,8 +61,8 @@ export function sanitizeConfigForOutput(obj: unknown, keyHint?: string): unknown
 
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (isSecretKey(key) && typeof value === "string") {
-      result[key] = value.length > 0 ? "[REDACTED]" : "";
+    if (isSecretKey(key) && isScalar(value)) {
+      result[key] = redactScalar(value);
     } else {
       result[key] = sanitizeConfigForOutput(value, key);
     }
@@ -68,6 +70,28 @@ export function sanitizeConfigForOutput(obj: unknown, keyHint?: string): unknown
   return result;
 }
 
+function isScalar(v: unknown): boolean {
+  return (
+    typeof v === "string" ||
+    typeof v === "number" ||
+    typeof v === "boolean" ||
+    typeof v === "bigint"
+  );
+}
+
+function redactScalar(v: unknown): unknown {
+  // Keep genuinely-empty strings empty so "unset" stays visible; redact anything real.
+  if (typeof v === "string") return v.length > 0 ? "[REDACTED]" : "";
+  return "[REDACTED]";
+}
+
+/**
+ * Heuristic, key-name based secret matcher (defense-in-depth, not a guarantee).
+ * Substring-based, so we deliberately avoid short/ambiguous tokens (key, pin, sk,
+ * pat, seed, salt, auth …) that would over-redact innocuous keys.
+ */
 function isSecretKey(key: string): boolean {
-  return /token|password|secret|credential|api[_-]?key|access[_-]?key|private[_-]?key/i.test(key);
+  return /token|password|passwd|pwd|passphrase|secret|credential|api[_-]?key|access[_-]?key|private[_-]?key|signing[_-]?key|encryption[_-]?key|session[_-]?key|client[_-]?key|authorization|bearer|cookie|connection[_-]?string|dsn|webhook|mnemonic/i.test(
+    key,
+  );
 }

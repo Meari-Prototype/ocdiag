@@ -93,9 +93,15 @@ Files read (read-only):
 
 - The Ed25519 **private key is used only to sign the handshake challenge
   locally**. The signature — never the private key — is sent to the gateway.
-- `ocdiag` is **read-only** toward gateway config; it issues no write methods.
+- `ocdiag` is **read-only** toward gateway *config*; it issues no write methods
+  (e.g. `config.set`).
+- ℹ️ `chat` and `diagnose` don't change config, but they do create and append
+  messages to a dedicated diagnostic agent session (sessionKey `gateway:direct`)
+  and trigger an LLM run on the gateway — server-side state that never touches
+  your config or local identity.
 - `config` and `diagnose` redact secret-looking keys (tokens, passwords, API
-  keys, …) before printing.
+  keys, authorization, cookie, …) heuristically before printing; secrets under
+  unusual key names or non-string values may slip through, so review before sharing.
 - ⚠️ `diagnose` sends a **redacted** copy of your config to the gateway agent for
   advice. If that agent is backed by a remote LLM, redacted config text leaves
   your machine. Run `diagnose` only when you're comfortable with that.

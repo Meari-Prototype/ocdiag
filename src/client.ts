@@ -14,10 +14,12 @@ import {
   publicKeyRawBase64Url,
   signPayload,
 } from "./device-identity.js";
+import { VERSION } from "./version.js";
 
 type PendingRequest = {
   resolve: (payload: unknown) => void;
   reject: (err: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
 };
 
 export type GatewayClientOptions = {
@@ -34,6 +36,8 @@ export type GatewayClientOptions = {
   pairedPlatform?: string;
   /** Timeout for the initial handshake in ms. Default: 10_000. */
   handshakeTimeoutMs?: number;
+  /** Timeout for each individual RPC request in ms. Default: 30_000. */
+  requestTimeoutMs?: number;
 };
 
 export class GatewayClient {
@@ -47,6 +51,7 @@ export class GatewayClient {
   private deviceIdentity: DeviceIdentity | null;
   private pairedPlatform: string | undefined;
   private handshakeTimeoutMs: number;
+  private requestTimeoutMs: number;
 
   constructor(opts: GatewayClientOptions) {
     this.url = opts.url;
@@ -56,6 +61,7 @@ export class GatewayClient {
     this.pairedPlatform = opts.pairedPlatform;
     this.onEvent = opts.onEvent;
     this.handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 10_000;
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? 30_000;
   }
 
   /** Connect and complete the handshake. Resolves with HelloOk. */
@@ -85,6 +91,7 @@ export class GatewayClient {
         }
         // Reject all pending requests.
         for (const [id, req] of this.pending) {
+          if (req.timer) clearTimeout(req.timer);
           req.reject(new Error("Connection closed"));
           this.pending.delete(id);
         }
@@ -158,7 +165,7 @@ export class GatewayClient {
             client: {
               id: clientId,
               displayName: "ocdiag",
-              version: "0.1.0",
+              version: VERSION,
               platform: plat,
               mode: clientMode,
             },
@@ -198,6 +205,7 @@ export class GatewayClient {
           const req = this.pending.get(frame.id);
           if (req) {
             this.pending.delete(frame.id);
+            if (req.timer) clearTimeout(req.timer);
             if (frame.ok) {
               req.resolve(frame.payload);
             } else {
@@ -214,15 +222,27 @@ export class GatewayClient {
     });
   }
 
-  /** Send an RPC request and wait for the response. */
+  /** Send an RPC request and wait for the response (or time out). */
   async request<T = unknown>(method: string, params?: unknown): Promise<T> {
     const id = randomUUID();
     return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Request '${method}' timed out after ${this.requestTimeoutMs}ms`));
+      }, this.requestTimeoutMs);
+      timer.unref?.();
       this.pending.set(id, {
         resolve: resolve as (v: unknown) => void,
         reject,
+        timer,
       });
-      this.send({ type: "req", id, method, params });
+      try {
+        this.send({ type: "req", id, method, params });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err as Error);
+      }
     });
   }
 

@@ -18,6 +18,9 @@ yarn-error.log*
 .idea/
 *.swp
 
+# Claude Code local settings
+.claude/
+
 # Environment
 .env
 .env.local

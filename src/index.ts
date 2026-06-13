@@ -10,13 +10,14 @@ import { configGetCommand } from "./commands/config.js";
 import { chatRepl, sendToAgent, dispatchAgentEvent } from "./commands/chat.js";
 import { diagnoseCommand } from "./commands/diagnose.js";
 import type { EventFrame } from "./protocol.js";
+import { VERSION } from "./version.js";
 
 const program = new Command();
 
 program
   .name("ocdiag")
   .description("Diagnostics CLI for OpenClaw gateway")
-  .version("0.1.0")
+  .version(VERSION)
   .option("--url <url>", "Gateway WebSocket URL", resolveGatewayUrl())
   .option("--token <token>", "Gateway auth token (or set OPENCLAW_GATEWAY_TOKEN)");
 
