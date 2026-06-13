@@ -87,6 +87,7 @@ ocdiag chat                         # 交互式 REPL（/quit 退出）
 ## 隐私与安全
 
 - Ed25519 **私钥仅用于在本地对握手挑战（challenge）签名**。发给网关的是签名结果 —— 私钥本身绝不外传。
+- ⚠️ 默认连接是明文 `ws://`，**无 TLS**。本机或 Docker 桥接没问题；但若把 `OPENCLAW_GATEWAY_HOST` 指向远程主机，设备 token 与签名负载会**明文过网**。跨网络场景请走 SSH 隧道 / VPN，或在网关前置 TLS（`wss://`）。
 - `ocdiag` 对网关**配置**是只读的，不发出任何写操作（如 `config.set`）方法。
 - ℹ️ `chat` 与 `diagnose` 不修改配置，但会在网关侧创建并向专用诊断会话（sessionKey `gateway:direct`）追加消息，并触发一次智能体的 LLM 运行。这是网关侧的状态变更，不影响你的配置或本地身份。
 - `config` 和 `diagnose` 在打印前会按常见密钥名（token、password、API key、authorization、cookie 等）对疑似密钥做**启发式**脱敏；非常规命名或非字符串的键可能漏网，分享前请自行复核。

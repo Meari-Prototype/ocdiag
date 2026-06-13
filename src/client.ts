@@ -15,6 +15,7 @@ import {
   signPayload,
 } from "./device-identity.js";
 import { VERSION } from "./version.js";
+import { sanitizeConfigForOutput } from "./redact.js";
 
 type PendingRequest = {
   resolve: (payload: unknown) => void;
@@ -200,7 +201,10 @@ export class GatewayClient {
         // Normal operation: dispatch responses and events.
         if (frame.type === "res") {
           if (process.env.OCDIAG_DEBUG === "1") {
-            console.error(`[debug] res id=${frame.id} ok=${frame.ok} payload=${JSON.stringify(frame.payload).slice(0, 200)}`);
+            // Redact before logging — config.get responses carry tokens / API keys,
+            // and the command-layer redaction doesn't cover raw debug output.
+            const safe = JSON.stringify(sanitizeConfigForOutput(frame.payload)).slice(0, 200);
+            console.error(`[debug] res id=${frame.id} ok=${frame.ok} payload=${safe}`);
           }
           const req = this.pending.get(frame.id);
           if (req) {

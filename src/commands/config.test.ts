@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { configGetCommand, sanitizeConfigForOutput } from "./config.js";
+import { configGetCommand, sanitizeConfigForOutput, getConfigDottedPath, canonicalConfig } from "./config.js";
 import type { GatewayClient } from "../client.js";
 
 describe("sanitizeConfigForOutput", () => {
@@ -140,5 +140,18 @@ describe("sanitizeConfigForOutput", () => {
       usage: { totalTokens: 4096, inputTokens: 100, outputTokens: 50 },
       telegram: { fallbackTokens: ["[REDACTED]"] },
     });
+  });
+});
+
+describe("config layer ordering (Bug 4: whole-config and single-key must agree)", () => {
+  it("getConfigDottedPath reads the same layer canonicalConfig shows (parsed wins)", () => {
+    // Same key present in both `parsed` and `config` layers, different values.
+    const payload = {
+      parsed: { gateway: { mode: "from-parsed" } },
+      config: { gateway: { mode: "from-config" } },
+    };
+    assert.equal(canonicalConfig(payload).layer, "parsed");
+    // Single-key lookup must NOT disagree by reading the `config` layer first.
+    assert.equal(getConfigDottedPath(payload, "gateway.mode"), "from-parsed");
   });
 });

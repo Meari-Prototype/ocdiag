@@ -1,5 +1,17 @@
 import chalk from "chalk";
 import type { GatewayClient } from "../client.js";
+import { sanitizeConfigForOutput } from "../redact.js";
+
+// Re-exported so existing importers (diagnose, tests) keep their import path.
+export { sanitizeConfigForOutput };
+
+/**
+ * Config layers returned by config.get, in priority order — used by BOTH the
+ * whole-config view (canonicalConfig) and single-key lookup (getConfigDottedPath)
+ * so the two never disagree on which layer a value comes from. Prefer `parsed`
+ * (the user's actual openclaw.json) over the resolved/runtime copies.
+ */
+const CONFIG_LAYER_ORDER = ["parsed", "resolved", "config", "runtimeConfig", "sourceConfig"];
 
 export type ConfigOptions = { json?: boolean };
 
@@ -55,12 +67,12 @@ export async function configGetCommand(client: GatewayClient, key?: string, opts
 /**
  * config.get wraps the real config in several near-identical layers
  * (parsed / sourceConfig / resolved / runtimeConfig / config). Pick one to show
- * by default — prefer `parsed` (the user's actual openclaw.json contents).
+ * by default — see CONFIG_LAYER_ORDER.
  */
 export function canonicalConfig(payload: unknown): { layer: string; value: unknown } {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const p = payload as Record<string, unknown>;
-    for (const layer of ["parsed", "resolved", "config", "runtimeConfig", "sourceConfig"]) {
+    for (const layer of CONFIG_LAYER_ORDER) {
       const v = p[layer];
       if (v && typeof v === "object") return { layer, value: v };
     }
@@ -88,13 +100,13 @@ function configMeta(payload: unknown): string {
   return parts.join(" · ");
 }
 
-function getConfigDottedPath(configPayload: unknown, key: string): unknown {
+export function getConfigDottedPath(configPayload: unknown, key: string): unknown {
   const direct = getDottedPath(configPayload, key);
   if (direct !== undefined) return direct;
 
   if (!configPayload || typeof configPayload !== "object") return undefined;
   const payload = configPayload as Record<string, unknown>;
-  for (const root of ["config", "parsed", "runtimeConfig", "resolved", "sourceConfig"]) {
+  for (const root of CONFIG_LAYER_ORDER) {
     const value = getDottedPath(payload[root], key);
     if (value !== undefined) return value;
   }
@@ -116,57 +128,4 @@ function getDottedPath(obj: unknown, key: string): unknown {
 function formatJsonValue(value: unknown): string {
   const formatted = JSON.stringify(value, null, 2);
   return formatted === undefined ? "undefined" : formatted;
-}
-
-export function sanitizeConfigForOutput(obj: unknown, keyHint?: string): unknown {
-  // A secret-named key whose value is a scalar is redacted outright — regardless of
-  // type — so numeric/boolean secrets don't slip through a string-only check.
-  if (keyHint && isSecretKey(keyHint) && isScalar(obj)) {
-    return redactScalar(obj);
-  }
-
-  if (!obj || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map((item) => sanitizeConfigForOutput(item, keyHint));
-
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (isSecretKey(key) && isScalar(value)) {
-      result[key] = redactScalar(value);
-    } else {
-      result[key] = sanitizeConfigForOutput(value, key);
-    }
-  }
-  return result;
-}
-
-function isScalar(v: unknown): boolean {
-  return (
-    typeof v === "string" ||
-    typeof v === "number" ||
-    typeof v === "boolean" ||
-    typeof v === "bigint"
-  );
-}
-
-function redactScalar(v: unknown): unknown {
-  // Keep genuinely-empty strings empty so "unset" stays visible; redact anything real.
-  if (typeof v === "string") return v.length > 0 ? "[REDACTED]" : "";
-  return "[REDACTED]";
-}
-
-/**
- * Heuristic, key-name based secret matcher (defense-in-depth, not a guarantee).
- * Substring-based, so we deliberately avoid short/ambiguous tokens (key, pin, sk,
- * pat, seed, salt, auth …) that would over-redact innocuous keys.
- */
-function isSecretKey(key: string): boolean {
-  // Token-count / context-size config (maxTokens, contextTokens, totalTokensUsed …)
-  // contains "token" but is NOT a credential — exclude before the secret match so we
-  // don't redact numeric counters.
-  if (/(max|min|total|input|output|prompt|completion|context|remaining|cache|num|used|count)[_-]?tokens?/i.test(key)) {
-    return false;
-  }
-  return /token|password|passwd|pwd|passphrase|secret|credential|api[_-]?key|access[_-]?key|private[_-]?key|signing[_-]?key|encryption[_-]?key|session[_-]?key|client[_-]?key|authorization|bearer|cookie|connection[_-]?string|dsn|webhook|mnemonic/i.test(
-    key,
-  );
 }

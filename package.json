@@ -1,6 +1,6 @@
 {
   "name": "ocdiag",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only diagnostics CLI for the OpenClaw gateway — check status, inspect config, and chat with agents.",
   "keywords": [
     "openclaw",

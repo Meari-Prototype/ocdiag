@@ -98,6 +98,11 @@ Files read (read-only):
 
 - The Ed25519 **private key is used only to sign the handshake challenge
   locally**. The signature — never the private key — is sent to the gateway.
+- ⚠️ The default connection is plaintext `ws://` with **no TLS**. Local /
+  Docker-bridge use is fine, but pointing `OPENCLAW_GATEWAY_HOST` at a remote
+  host sends the device token and signed payload over the network **in the
+  clear**. For cross-network use, tunnel over SSH/VPN or put TLS (`wss://`) in
+  front of the gateway.
 - `ocdiag` is **read-only** toward gateway *config*; it issues no write methods
   (e.g. `config.set`).
 - ℹ️ `chat` and `diagnose` don't change config, but they do create and append

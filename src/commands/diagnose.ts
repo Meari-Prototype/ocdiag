@@ -3,7 +3,7 @@ import type { GatewayClient } from "../client.js";
 import { sendToAgent } from "./chat.js";
 import { canonicalConfig, sanitizeConfigForOutput } from "./config.js";
 
-type DiagnosticFinding = {
+export type DiagnosticFinding = {
   severity: "error" | "warn" | "info";
   area: string;
   message: string;
@@ -22,7 +22,7 @@ export async function diagnoseCommand(client: GatewayClient) {
   let health: Record<string, unknown> | null = null;
   try {
     health = await client.request<Record<string, unknown>>("health");
-    findings.push({ severity: "info", area: "health", message: `Gateway healthy` });
+    analyzeHealth(health, findings);
   } catch (err) {
     findings.push({ severity: "error", area: "health", message: `Health check failed: ${err}` });
   }
@@ -40,11 +40,15 @@ export async function diagnoseCommand(client: GatewayClient) {
     analyzeConfig(config, findings);
   }
 
-  // 3. Channel status
-  let channels: unknown[] | null = null;
+  // 3. Channel status — channels.status returns an OBJECT
+  // ({ channelOrder, channels, channelAccounts, … }), never an array.
+  let channels: Record<string, unknown> | null = null;
   try {
     const result = await client.request<unknown>("channels.status");
-    channels = Array.isArray(result) ? result : null;
+    channels =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : null;
   } catch (err) {
     findings.push({
       severity: "warn",
@@ -123,7 +127,7 @@ export async function diagnoseCommand(client: GatewayClient) {
   }
 }
 
-function analyzeConfig(config: Record<string, unknown>, findings: DiagnosticFinding[]) {
+export function analyzeConfig(config: Record<string, unknown>, findings: DiagnosticFinding[]) {
   // Gateway server config (gateway.mode / gateway.auth) is optional and absent in
   // newer schemas — only flag issues when the section is actually present.
   const gateway = config.gateway as Record<string, unknown> | undefined;
@@ -180,20 +184,46 @@ function analyzeConfig(config: Record<string, unknown>, findings: DiagnosticFind
   }
 }
 
-function analyzeChannels(channels: unknown[], findings: DiagnosticFinding[]) {
-  for (const ch of channels) {
-    if (!ch || typeof ch !== "object") continue;
-    const entry = ch as Record<string, unknown>;
-    const name = (entry.channel ?? entry.id ?? "unknown") as string;
-    const ok = entry.ok ?? entry.connected ?? entry.status === "ok";
-    const error = entry.error as string | undefined;
+export function analyzeHealth(health: Record<string, unknown>, findings: DiagnosticFinding[]) {
+  // The gateway answers the RPC even when unhealthy, so a successful call is NOT
+  // enough — read health.ok (matching status.ts's `h.ok === true`).
+  if (health.ok === true) {
+    findings.push({ severity: "info", area: "health", message: "Gateway healthy" });
+  } else {
+    findings.push({
+      severity: "error",
+      area: "health",
+      message: "Gateway reports unhealthy (health.ok is not true)",
+    });
+  }
+}
 
-    if (!ok) {
-      findings.push({
-        severity: "error",
-        area: "channels",
-        message: `Channel "${name}" is not healthy${error ? `: ${error}` : ""}`,
-      });
+export function analyzeChannels(channels: Record<string, unknown>, findings: DiagnosticFinding[]) {
+  // channels.status shape (see status.ts): per-channel meta in `channels`,
+  // per-channel account arrays in `channelAccounts`, display order in `channelOrder`.
+  const meta = (channels.channels ?? {}) as Record<string, any>;
+  const accountsByChannel = (channels.channelAccounts ?? {}) as Record<string, any>;
+  const order: string[] = Array.isArray(channels.channelOrder)
+    ? (channels.channelOrder as string[])
+    : Object.keys(meta);
+
+  for (const name of order) {
+    const cm = (meta[name] ?? {}) as Record<string, any>;
+    if (cm.running === false) {
+      findings.push({ severity: "warn", area: "channels", message: `Channel "${name}" is not running` });
+    }
+
+    const accounts: any[] = Array.isArray(accountsByChannel[name]) ? accountsByChannel[name] : [];
+    for (const acc of accounts) {
+      // A deliberately disabled account being disconnected is not a fault.
+      if (acc?.connected !== true && acc?.enabled !== false) {
+        const reason = acc?.lastError ? `: ${acc.lastError}` : "";
+        findings.push({
+          severity: "error",
+          area: "channels",
+          message: `Channel "${name}" account "${acc?.accountId ?? "?"}" is not connected${reason}`,
+        });
+      }
     }
   }
 }
@@ -201,7 +231,7 @@ function analyzeChannels(channels: unknown[], findings: DiagnosticFinding[]) {
 function buildDiagnosticSummary(
   findings: DiagnosticFinding[],
   config: Record<string, unknown> | null,
-  channels: unknown[] | null,
+  channels: Record<string, unknown> | null,
 ): string {
   const lines: string[] = [
     "I ran diagnostics on my OpenClaw gateway. Here are the findings:\n",
