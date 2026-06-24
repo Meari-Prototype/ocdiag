@@ -64,6 +64,19 @@ export type HelloOk = {
   server: { version: string; connId: string };
   features: { methods: string[]; events: string[] };
   snapshot: unknown;
+  pluginSurfaceUrls?: Record<string, string>;
+  auth: {
+    deviceToken?: string;
+    role: string;
+    scopes: string[];
+    issuedAtMs?: number;
+    deviceTokens?: Array<{
+      deviceToken: string;
+      role: string;
+      scopes: string[];
+      issuedAtMs: number;
+    }>;
+  };
   policy: {
     maxPayload: number;
     maxBufferedBytes: number;
@@ -80,4 +93,5 @@ export type AgentEventPayload = {
   sessionKey?: string;
 };
 
-export const PROTOCOL_VERSION = 3;
+export const MIN_CLIENT_PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 4;

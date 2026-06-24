@@ -6,7 +6,7 @@
  * (diagnose.ts) 只认这些视图，不再直接触碰原始字段名。
  *
  * 设计约定：
- *  - 字段名钉在「当前编译针对的 OpenClaw 版本」(2026.4.25)，不堆防御性别名——
+ *  - 字段名钉在「当前编译针对的 OpenClaw 版本」(2026.6.10)，不堆防御性别名——
  *    schema 变了就改这一层、按新版本重新解析编译，下游与判断规则零改动。
  *    每个 view 函数都用注释标出它对应的原始路径，就是给将来改 schema 的人/AI 的索引。
  *  - 容错：任何字段缺失 / 类型不符都安全降级（绝不抛），保证诊断工具面对异常或
@@ -175,7 +175,7 @@ export function viewChannels(channelsRaw: unknown, healthRaw?: unknown): Channel
 
 /**
  * 来源 (health): { defaultAgentId, agents:[{ agentId, isDefault,
- *   heartbeat:{ enabled }, sessions:{ count, recent:[{ age }] } }] }
+ *   heartbeat:{ enabled, every, everyMs, target }, sessions:{ count, recent:[{ age }] } }] }
  */
 export function viewAgents(healthRaw: unknown): { defaultAgentId?: string; agents: AgentView[] } {
   const h = asObj(healthRaw);
@@ -184,11 +184,17 @@ export function viewAgents(healthRaw: unknown): { defaultAgentId?: string; agent
     const a = asObj(raw);
     const agentId = asStr(a.agentId) ?? "?"; // 原始值：用于比对
     const sessions = asObj(a.sessions);
+    const heartbeat = asObj(a.heartbeat);
+    const everyMs = asNum(heartbeat.everyMs);
+    const every = asStr(heartbeat.every);
+    const target = asStr(heartbeat.target);
+    const hasInterval =
+      everyMs !== undefined ? everyMs > 0 : every !== undefined ? every !== "0" && every.trim() !== "" : true;
     return {
       agentId: stripControl(agentId), // 输出净化
       // 显式 isDefault，或 agentId 命中 defaultAgentId；两者都缺失时不误标（defaultAgentId 必须存在）。
       isDefault: a.isDefault === true || (defaultAgentId !== undefined && agentId === defaultAgentId),
-      heartbeatEnabled: asObj(a.heartbeat).enabled === true,
+      heartbeatEnabled: heartbeat.enabled === true && hasInterval && target !== "none",
       sessionCount: asNum(sessions.count) ?? 0,
       lastActiveAge: asNum(asObj(asArr(sessions.recent)[0]).age),
     } satisfies AgentView;

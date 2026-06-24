@@ -49,7 +49,7 @@ export async function statusCommand(client: GatewayClient, opts: StatusOptions =
   }
 
   if (opts.verbose) {
-    rawSection("Server", info);
+    rawSection("Server", sanitizeConfigForOutput(info));
     rawSection("Health", sanitizeConfigForOutput(unwrap(health)));
     rawSection("Status", sanitizeConfigForOutput(unwrap(status)));
     rawSection("Channels", sanitizeConfigForOutput(unwrap(channels)));

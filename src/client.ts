@@ -7,7 +7,7 @@ import type {
   GatewayFrame,
   HelloOk,
 } from "./protocol.js";
-import { PROTOCOL_VERSION } from "./protocol.js";
+import { MIN_CLIENT_PROTOCOL_VERSION, PROTOCOL_VERSION } from "./protocol.js";
 import {
   type DeviceIdentity,
   buildDeviceAuthPayloadV3,
@@ -161,7 +161,7 @@ export class GatewayClient {
           const hasAuth = Object.keys(auth).length > 0;
 
           const connectParams: ConnectParams = {
-            minProtocol: PROTOCOL_VERSION,
+            minProtocol: MIN_CLIENT_PROTOCOL_VERSION,
             maxProtocol: PROTOCOL_VERSION,
             client: {
               id: clientId,
