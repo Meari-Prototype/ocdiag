@@ -150,6 +150,30 @@ describe("viewAgents", () => {
     assert.equal(agents[0].isDefault, true);
   });
 
+  it("treats disabled heartbeat interval signals as heartbeat off", () => {
+    const { agents } = viewAgents({
+      agents: [
+        { agentId: "every-ms-zero", heartbeat: { enabled: true, everyMs: 0 } },
+        { agentId: "every-zero", heartbeat: { enabled: true, every: "0" } },
+        { agentId: "every-zero-spaced", heartbeat: { enabled: true, every: " 0 " } },
+        { agentId: "every-blank", heartbeat: { enabled: true, every: " " } },
+        { agentId: "target-none", heartbeat: { enabled: true, everyMs: 1000, target: "none" } },
+        { agentId: "positive", heartbeat: { enabled: true, everyMs: 1000 } },
+      ],
+    });
+    assert.deepEqual(
+      agents.map((a) => [a.agentId, a.heartbeatEnabled]),
+      [
+        ["every-ms-zero", false],
+        ["every-zero", false],
+        ["every-zero-spaced", false],
+        ["every-blank", false],
+        ["target-none", false],
+        ["positive", true],
+      ],
+    );
+  });
+
   it("does NOT mark an agent default when both agentId and defaultAgentId are missing", () => {
     const { agents } = viewAgents({ agents: [{ heartbeat: { enabled: false } }] });
     assert.equal(agents[0].agentId, "?");

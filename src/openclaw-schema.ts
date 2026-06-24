@@ -187,9 +187,10 @@ export function viewAgents(healthRaw: unknown): { defaultAgentId?: string; agent
     const heartbeat = asObj(a.heartbeat);
     const everyMs = asNum(heartbeat.everyMs);
     const every = asStr(heartbeat.every);
+    const everyTrimmed = every?.trim();
     const target = asStr(heartbeat.target);
     const hasInterval =
-      everyMs !== undefined ? everyMs > 0 : every !== undefined ? every !== "0" && every.trim() !== "" : true;
+      everyMs !== undefined ? everyMs > 0 : everyTrimmed !== undefined ? everyTrimmed !== "0" && everyTrimmed !== "" : true;
     return {
       agentId: stripControl(agentId), // 输出净化
       // 显式 isDefault，或 agentId 命中 defaultAgentId；两者都缺失时不误标（defaultAgentId 必须存在）。
